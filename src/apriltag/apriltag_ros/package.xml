@@ -1,0 +1,25 @@
+<package format="3">
+  <name>apriltag_ros</name>
+  <version>1.0.0</version>
+  <description>The apriltag ros package</description>
+  <maintainer email="quchao@seas.upenn.edu">Chao Qu</maintainer>
+  <author>Chao Qu</author>
+  <license>BSD</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
+
+  <depend>apriltag_mit</depend>
+  <depend>apriltag_msgs</depend>
+  <depend>apriltag_umich</depend>
+
+  <build_depend>message_generation</build_depend>
+  <exec_depend>message_runtime</exec_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

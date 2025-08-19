@@ -1,0 +1,20 @@
+cam0:
+  camera_model: pinhole
+  intrinsics: [1165.07, 1163.93, 954.126, 541.265]       # 
+  distortion_model: radtan                          # 若是鱼眼改为 equidistant 并给 4 个参数
+  distortion_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]      # 先从 0 开始
+  resolution: [1920, 1080]
+  rostopic: /color/image
+
+cam1:
+  T_cn_cnm1:
+  - [ 0.8660254, 0.0, 0.5,       0.00 ]
+  - [ 0.0,       1.0, 0.0,       -0.15 ]
+  - [ -0.5,      0.0, 0.8660254, 0.05 ]
+  - [ 0.0,       0.0, 0.0,       1.0  ]
+  camera_model: pinhole
+  intrinsics: [730.0, 730.0, 800.0, 650.0]          
+  distortion_model: equidistant
+  distortion_coeffs: [0.0, 0.0, 0.0, 0.0]
+  resolution: [1600, 1296]
+  rostopic: /odin1/image

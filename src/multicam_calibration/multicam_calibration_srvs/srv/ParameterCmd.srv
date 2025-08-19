@@ -1,0 +1,9 @@
+uint8 PARAM_FIX_INTRINSICS=0
+uint8 PARAM_FIX_EXTRINSICS=1
+uint8 PARAM_SET_CAMERA_ACTIVE=2
+uint8 param
+string camera
+bool  value
+---
+bool success
+string message
