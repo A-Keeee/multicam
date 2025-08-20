@@ -30,7 +30,7 @@ def generate_launch_description():
     node_name_arg = LaunchArg('node_name', default_value='multicam_calibration',
                               description='name of calibration node')
     # new launch args
-    approx_sync_slop_arg = LaunchArg('approx_sync_slop', default_value='0.5', description='ApproximateTime 同步允许的最大秒差')
+    approx_sync_slop_arg = LaunchArg('approx_sync_slop', default_value='0.3', description='ApproximateTime 同步允许的最大秒差')
     force_publish_debug_arg = LaunchArg('force_publish_debug', default_value='true', description='即使无订阅也发布debug图像')
     node = Node(package='multicam_calibration',
                 executable='calibration_node',
@@ -42,8 +42,8 @@ def generate_launch_description():
                      'target_type': 'aprilgrid',
                      'tag_rows': 8,
                      'tag_cols': 11,
-                     'tag_size': 0.04,
-                     'tag_spacing': 0.25,
+                     'tag_size': 0.017,
+                     'tag_spacing': 0.3,
                      'black_border': 2,
                      'tag_family': '36h11',
                      'corners_in_file': '',

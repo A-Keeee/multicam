@@ -1,18 +1,5 @@
-#!/usr/bin/env python3
-
-# Copyright 2025 Google LLC.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 图像拼接v1.0
+# 仅考虑旋转的单应性进行图像拼接
 
 import rclpy
 from rclpy.node import Node
@@ -53,8 +40,14 @@ class ImageStitcherNode(Node):
 
         # --- 2. 计算变换关系 ---
         T_01 = self.cam1_params['T_cn_cnm1']
+        
         T_10 = np.linalg.inv(T_01)
         R_10 = T_10[0:3, 0:3]
+        
+        # 打印变换信息用于调试
+        translation = T_01[0:3, 3]
+        self.get_logger().info(f'cam1相对于cam0的平移: tx={translation[0]:.4f}, ty={translation[1]:.4f}, tz={translation[2]:.4f}')
+        self.get_logger().info(f'tx<0表示cam1在cam0左侧, tx>0表示cam1在cam0右侧')
         
         self.H = self.K0 @ R_10 @ np.linalg.inv(self.K1)
         self.get_logger().info('使用纯旋转单应性（忽略平移）')
@@ -73,7 +66,9 @@ class ImageStitcherNode(Node):
         # --- 4. 初始化ROS订阅器和发布器 ---
         self.stitched_image_publisher = self.create_publisher(Image, '/image_stitched', 10)
         sub_cam0 = message_filters.Subscriber(self, Image, self.cam0_params['rostopic'])
+        print(f"订阅话题: {self.cam0_params['rostopic']}")
         sub_cam1 = message_filters.Subscriber(self, Image, self.cam1_params['rostopic'])
+        print(f"订阅话题: {self.cam1_params['rostopic']}")
         self.time_synchronizer = message_filters.ApproximateTimeSynchronizer([sub_cam0, sub_cam1], queue_size=10, slop=0.1)
         self.time_synchronizer.registerCallback(self.image_callback)
         self.get_logger().info('订阅器已设置，等待图像消息...')
@@ -87,6 +82,7 @@ class ImageStitcherNode(Node):
         cam0_params = {
             'intrinsics': np.array([[cam0_config['intrinsics'][0], 0, cam0_config['intrinsics'][2]], [0, cam0_config['intrinsics'][1], cam0_config['intrinsics'][3]], [0, 0, 1]], dtype=np.float32),
             'distortion_coeffs': np.array(cam0_config['distortion_coeffs'], dtype=np.float32),
+            'distortion_model': cam0_config['distortion_model'],
             'resolution': cam0_config['resolution'],
             'rostopic': cam0_config['rostopic'],
         }
@@ -95,6 +91,7 @@ class ImageStitcherNode(Node):
             'T_cn_cnm1': np.array(cam1_config['T_cn_cnm1'], dtype=np.float32),
             'intrinsics': np.array([[cam1_config['intrinsics'][0], 0, cam1_config['intrinsics'][2]], [0, cam1_config['intrinsics'][1], cam1_config['intrinsics'][3]], [0, 0, 1]], dtype=np.float32),
             'distortion_coeffs': np.array(cam1_config['distortion_coeffs'], dtype=np.float32),
+            'distortion_model': cam1_config['distortion_model'],
             'resolution': cam1_config['resolution'],
             'rostopic': cam1_config['rostopic'],
         }
@@ -115,8 +112,22 @@ class ImageStitcherNode(Node):
         return output_size, warp_matrix_0, warp_matrix_1
 
     def _prepare_full_res_maps(self):
-        self.map1_0_full, self.map2_0_full = cv2.initUndistortRectifyMap(self.K0, self.D0, None, self.K0, (self.w0, self.h0), cv2.CV_32FC1)
-        self.map1_1_full, self.map2_1_full = cv2.fisheye.initUndistortRectifyMap(self.K1, self.D1, np.eye(3), self.K1, (self.w1, self.h1), cv2.CV_32FC1)
+        # cam0 去畸变映射
+        if self.cam0_params['distortion_model'] in ['fisheye', 'equidistant']:
+            self.map1_0_full, self.map2_0_full = cv2.fisheye.initUndistortRectifyMap(
+                self.K0, self.D0, np.eye(3), self.K0, (self.w0, self.h0), cv2.CV_32FC1)
+        else:  # radtan, plumb_bob, or other standard models
+            self.map1_0_full, self.map2_0_full = cv2.initUndistortRectifyMap(
+                self.K0, self.D0, None, self.K0, (self.w0, self.h0), cv2.CV_32FC1)
+        
+        # cam1 去畸变映射
+        if self.cam1_params['distortion_model'] in ['fisheye', 'equidistant']:
+            self.map1_1_full, self.map2_1_full = cv2.fisheye.initUndistortRectifyMap(
+                self.K1, self.D1, np.eye(3), self.K1, (self.w1, self.h1), cv2.CV_32FC1)
+        else:  # radtan, plumb_bob, or other standard models
+            self.map1_1_full, self.map2_1_full = cv2.initUndistortRectifyMap(
+                self.K1, self.D1, None, self.K1, (self.w1, self.h1), cv2.CV_32FC1)
+        
         self.get_logger().info('全分辨率去畸变映射表已生成')
 
     def _prepare_compressed_geometry_and_maps(self):
@@ -136,8 +147,21 @@ class ImageStitcherNode(Node):
         self.output_size_compressed, self.warp_matrix_0_compressed, self.warp_matrix_1_compressed = \
             self._calculate_output_geometry(H_compressed, self.w0_c, self.h0_c, self.w1_c, self.h1_c)
 
-        self.map1_0_compressed, self.map2_0_compressed = cv2.initUndistortRectifyMap(self.K0, self.D0, None, K0_scaled, (self.w0_c, self.h0_c), cv2.CV_32FC1)
-        self.map1_1_compressed, self.map2_1_compressed = cv2.fisheye.initUndistortRectifyMap(self.K1, self.D1, np.eye(3), K1_scaled, (self.w1_c, self.h1_c), cv2.CV_32FC1)
+        # cam0 压缩去畸变映射
+        if self.cam0_params['distortion_model'] in ['fisheye', 'equidistant']:
+            self.map1_0_compressed, self.map2_0_compressed = cv2.fisheye.initUndistortRectifyMap(
+                self.K0, self.D0, np.eye(3), K0_scaled, (self.w0_c, self.h0_c), cv2.CV_32FC1)
+        else:  # radtan, plumb_bob, or other standard models
+            self.map1_0_compressed, self.map2_0_compressed = cv2.initUndistortRectifyMap(
+                self.K0, self.D0, None, K0_scaled, (self.w0_c, self.h0_c), cv2.CV_32FC1)
+        
+        # cam1 压缩去畸变映射
+        if self.cam1_params['distortion_model'] in ['fisheye', 'equidistant']:
+            self.map1_1_compressed, self.map2_1_compressed = cv2.fisheye.initUndistortRectifyMap(
+                self.K1, self.D1, np.eye(3), K1_scaled, (self.w1_c, self.h1_c), cv2.CV_32FC1)
+        else:  # radtan, plumb_bob, or other standard models
+            self.map1_1_compressed, self.map2_1_compressed = cv2.initUndistortRectifyMap(
+                self.K1, self.D1, None, K1_scaled, (self.w1_c, self.h1_c), cv2.CV_32FC1)
         
         self.get_logger().info('压缩分辨率去畸变映射表已生成')
     
